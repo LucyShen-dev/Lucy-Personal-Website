@@ -22,6 +22,7 @@ def create_app():
     load_env_file()
     app = Flask(__name__)
     app.config["SECRET_KEY"] = "dev-change-me"
+    app.config["SITE_URL"] = os.getenv("SITE_URL", "").strip()
     smtp_host = os.getenv("SMTP_HOST", "").strip()
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_from = os.getenv("SMTP_FROM", "").strip()

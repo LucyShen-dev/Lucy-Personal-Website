@@ -2,7 +2,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
 main_bp = Blueprint("main", __name__)
 
@@ -10,6 +10,36 @@ main_bp = Blueprint("main", __name__)
 @main_bp.get("/")
 def index():
     return render_template("index.html")
+
+
+@main_bp.get("/robots.txt")
+def robots():
+    site_url = current_app.config.get("SITE_URL") or request.url_root.rstrip("/")
+    body = "User-agent: *\nAllow: /\nSitemap: {}/sitemap.xml\n".format(site_url)
+    return Response(body, mimetype="text/plain")
+
+
+@main_bp.get("/sitemap.xml")
+def sitemap():
+    site_url = current_app.config.get("SITE_URL") or request.url_root.rstrip("/")
+    entries = [
+        {
+            "loc": "{}/".format(site_url),
+            "changefreq": "weekly",
+            "priority": "1.0",
+        }
+    ]
+    urls = "\n".join(
+        "  <url>\n    <loc>{loc}</loc>\n    <changefreq>{changefreq}</changefreq>\n    <priority>{priority}</priority>\n  </url>".format(
+            **entry
+        )
+        for entry in entries
+    )
+    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
+          "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" \
+          "{urls}\n" \
+          "</urlset>\n".format(urls=urls)
+    return Response(xml, mimetype="application/xml")
 
 
 def send_contact_email(name: str, sender_email: str, message: str) -> None:
