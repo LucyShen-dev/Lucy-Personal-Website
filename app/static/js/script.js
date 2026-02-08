@@ -1,3 +1,5 @@
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 const revealOnScroll = () => {
   const elements = document.querySelectorAll("[data-reveal]");
   if (!elements.length) {
@@ -19,13 +21,38 @@ const revealOnScroll = () => {
 };
 
 const horizontalSections = Array.from(document.querySelectorAll("[data-horizontal]"));
+const horizontalAutoState = new Map();
 let animationFrame = null;
+const AUTO_ROTATE_DURATION = 24000;
+const AUTO_ROTATE_IDLE_MS = 2000;
+
+const getHorizontalState = (section) => {
+  if (!horizontalAutoState.has(section)) {
+    horizontalAutoState.set(section, {
+      lastInteraction: performance.now(),
+      autoStartTime: 0,
+      autoStartProgress: 0,
+      isAutoActive: false,
+    });
+  }
+  return horizontalAutoState.get(section);
+};
+
+const markAllHorizontalInteraction = () => {
+  const now = performance.now();
+  horizontalSections.forEach((section) => {
+    const state = getHorizontalState(section);
+    state.lastInteraction = now;
+    state.isAutoActive = false;
+  });
+};
 
 const updateHorizontalSections = () => {
   animationFrame = null;
   const scrollY = window.scrollY;
   const viewportHeight = window.innerHeight;
   const viewportWidth = window.innerWidth;
+  const now = performance.now();
 
   horizontalSections.forEach((section) => {
     const track = section.querySelector(".horizontal-track");
@@ -43,7 +70,28 @@ const updateHorizontalSections = () => {
       1,
       Math.max(0, (scrollY - sectionTop) / Math.max(1, sectionHeight - viewportHeight))
     );
-    const translateX = -scrollDistance * scrollProgress;
+    const isInView = scrollY + viewportHeight > sectionTop && scrollY < sectionTop + sectionHeight;
+    const state = getHorizontalState(section);
+    const idleTime = now - state.lastInteraction;
+    const canAutoRotate =
+      !prefersReducedMotion && isInView && scrollDistance > 0 && idleTime > AUTO_ROTATE_IDLE_MS;
+
+    let activeProgress = scrollProgress;
+
+    if (canAutoRotate) {
+      if (!state.isAutoActive) {
+        state.isAutoActive = true;
+        state.autoStartTime = now;
+        state.autoStartProgress = scrollProgress % 1;
+      }
+      const elapsed = now - state.autoStartTime;
+      const autoProgress = (elapsed / AUTO_ROTATE_DURATION) % 1;
+      activeProgress = (state.autoStartProgress + autoProgress) % 1;
+    } else {
+      state.isAutoActive = false;
+    }
+
+    const translateX = -scrollDistance * activeProgress;
     track.style.transform = `translateX(${translateX.toFixed(2)}px)`;
   });
 };
@@ -55,7 +103,14 @@ const requestHorizontalUpdate = () => {
 };
 
 window.addEventListener("resize", requestHorizontalUpdate);
-window.addEventListener("scroll", requestHorizontalUpdate, { passive: true });
+window.addEventListener(
+  "scroll",
+  () => {
+    markAllHorizontalInteraction();
+    requestHorizontalUpdate();
+  },
+  { passive: true }
+);
 
 revealOnScroll();
 updateHorizontalSections();
@@ -66,7 +121,6 @@ const initTypewriter = () => {
     return;
   }
 
-  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const startTypewriter = (heading) => {
     if (heading.dataset.typewriterStarted === "true") {
       return;
@@ -204,3 +258,21 @@ const initPolaroidStacks = () => {
 
 initTypewriter();
 initPolaroidStacks();
+
+horizontalSections.forEach((section) => {
+  const track = section.querySelector(".horizontal-track");
+  if (!track) {
+    return;
+  }
+  track.addEventListener("pointerdown", markAllHorizontalInteraction);
+  track.addEventListener("wheel", markAllHorizontalInteraction, { passive: true });
+  track.addEventListener("touchstart", markAllHorizontalInteraction, { passive: true });
+});
+
+if (horizontalSections.length && !prefersReducedMotion) {
+  const autoTick = () => {
+    updateHorizontalSections();
+    requestAnimationFrame(autoTick);
+  };
+  requestAnimationFrame(autoTick);
+}
